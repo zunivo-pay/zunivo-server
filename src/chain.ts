@@ -31,7 +31,7 @@ export const SCHED_ABI = parseAbi([
 ]);
 
 export const NAMES_ADDRESS = (process.env.NAMES_ADDRESS ??
-  "0x548eEEB403a76e71f2d71cc19B1c049B7337AcC0") as `0x${string}`;
+  "0x244e0c8bE1Ed59636901F98920413d414B158cc5") as `0x${string}`;
 
 export const NAMES_ABI = parseAbi([
   "event NameRegistered(string name, uint256 indexed tokenId, address indexed holder, uint256 pricePaid)",

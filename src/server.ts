@@ -201,9 +201,9 @@ function requireKey(req: any, res: any, next: any) {
 
 async function resolveDest(input: string): Promise<string | null> {
   let dest = String(input ?? "").trim();
-  if (dest.startsWith("@") || dest.toLowerCase().endsWith(".zunivo")) {
+  if (dest.startsWith("@") || dest.toLowerCase().endsWith(".agent")) {
     let label = dest.replace(/^@/, "").toLowerCase();
-    if (label.endsWith(".zunivo")) label = label.slice(0, -7);
+    if (label.endsWith(".agent")) label = label.slice(0, -6);
     if (!/^[a-z0-9][a-z0-9-]{1,18}[a-z0-9]$/.test(label)) return null;
     try {
       const addr = (await publicClient.readContract({
@@ -217,11 +217,11 @@ async function resolveDest(input: string): Promise<string | null> {
   return isAddress(dest) ? dest : null;
 }
 
-/** Create an order programmatically. Accepts a 0x address or a .zunivo name. */
+/** Create an order programmatically. Accepts a 0x address or a .agent name. */
 app.post("/v1/orders", requireKey, async (req, res) => {
   const { to, amount, memo } = req.body ?? {};
   const merchant = await resolveDest(to);
-  if (!merchant) return res.status(400).json({ error: "unresolvable recipient (0x address or registered .zunivo name)" });
+  if (!merchant) return res.status(400).json({ error: "unresolvable recipient (0x address or registered .agent name)" });
   const n = Number(amount);
   if (!amount || !isFinite(n) || n <= 0) return res.status(400).json({ error: "invalid amount" });
   const id = randomUUID();
