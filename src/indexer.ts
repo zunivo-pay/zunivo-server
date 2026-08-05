@@ -1,7 +1,7 @@
 import { parseEther } from "viem";
 import db from "./db.js";
 import { parseEventLogs } from "viem";
-import { publicClient, ROUTER_ADDRESS, PAYMENT_EVENT, SPLIT_ADDRESS, SPLIT_ABI } from "./chain.js";
+import { publicClient, ROUTER_ADDRESS, PAYMENT_EVENT, SPLIT_ADDRESS, SPLIT_ABI, RECORDS_ADDRESS, RECORDS_ABI } from "./chain.js";
 
 const START_BLOCK = BigInt(process.env.START_BLOCK ?? "52904490");
 const POLL_MS = 20_000;
@@ -14,6 +14,25 @@ const getCursor = (): bigint => {
 };
 const setCursor = (b: bigint) =>
   db.prepare("INSERT INTO cursor(k,v) VALUES('last_block',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").run(b.toString());
+
+const upsertRecord = db.prepare(
+  `INSERT INTO agent_records(token_id,key,value,updated_at) VALUES(?,?,?,?)
+   ON CONFLICT(token_id,key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`
+);
+const deleteRecord = db.prepare("DELETE FROM agent_records WHERE token_id=? AND key=?");
+const deleteAllRecords = db.prepare("DELETE FROM agent_records WHERE token_id=?");
+
+/** Apply one parsed ZunivoAgentRecords event to the local mirror. Exported so the
+ *  /api/agents/ingest fast-path applies receipts through the exact same logic. */
+export function applyRecordEvent(ev: { eventName: string; args: any }, ts: number) {
+  if (ev.eventName === "TextChanged") {
+    const id = ev.args.tokenId.toString();
+    if (ev.args.value === "") deleteRecord.run(id, ev.args.key);
+    else upsertRecord.run(id, ev.args.key, ev.args.value, ts);
+  } else if (ev.eventName === "RecordsCleared") {
+    deleteAllRecords.run(ev.args.tokenId.toString());
+  }
+}
 
 const insertPayment = db.prepare(
   `INSERT OR IGNORE INTO payments(tx_hash,log_index,order_hash,payer,merchant,gross,fee,block,ts)
@@ -87,6 +106,17 @@ async function tick() {
         log.transactionHash, Number(log.logIndex ?? 0), a.orderId, a.payer, SPLIT_ADDRESS,
         a.grossAmount.toString(), a.feeAmount.toString(), Number(log.blockNumber), ts
       );
+    }
+    // agent-record events in the same range (best-effort: never aborts the tick)
+    if (RECORDS_ADDRESS !== "0x0000000000000000000000000000000000000000") {
+      let recLogs: any[] = [];
+      try {
+        const raw = await publicClient.getLogs({ address: RECORDS_ADDRESS, fromBlock: from, toBlock: to });
+        recLogs = parseEventLogs({ abi: RECORDS_ABI, logs: raw }) as any[];
+      } catch {}
+      for (const log of recLogs as any[]) {
+        applyRecordEvent(log, Math.floor(Date.now() / 1000));
+      }
     }
     setCursor(to);
     from = to + 1n;

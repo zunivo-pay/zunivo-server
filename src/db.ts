@@ -41,6 +41,14 @@ CREATE TABLE IF NOT EXISTS names(
   owner TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_names_owner ON names(owner);
+CREATE TABLE IF NOT EXISTS agent_records(
+  token_id TEXT NOT NULL,
+  key TEXT NOT NULL,
+  value TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (token_id, key)
+);
+CREATE INDEX IF NOT EXISTS idx_records_key ON agent_records(key);
 CREATE TABLE IF NOT EXISTS scheduled(
   id INTEGER PRIMARY KEY,
   order_hash TEXT,

@@ -4,8 +4,8 @@ import cors from "cors";
 import { randomUUID, randomBytes, createHash } from "node:crypto";
 import { isAddress, formatEther, parseEventLogs } from "viem";
 import db, { hashOrderId } from "./db.js";
-import { publicClient, NAMES_ADDRESS, NAMES_ABI } from "./chain.js";
-import { startIndexer } from "./indexer.js";
+import { publicClient, NAMES_ADDRESS, NAMES_ABI, RECORDS_ADDRESS, RECORDS_ABI } from "./chain.js";
+import { startIndexer, applyRecordEvent } from "./indexer.js";
 import { startKeeper } from "./keeper.js";
 
 const app = express();
@@ -102,6 +102,60 @@ app.get("/api/names/:address", (req, res) => {
 /** Fast-path: right after minting, the client hands us the tx hash and we
  *  ingest its NameRegistered/Transfer events immediately — no waiting for
  *  the polling indexer. Idempotent; the poller remains the source of truth. */
+// ---------------------------------------------------------------
+// Agent directory — the service-discovery layer over .agent names
+// ---------------------------------------------------------------
+
+/** Every .agent name that has published records; only names with a service
+ *  endpoint ("url") count as discoverable agents. */
+app.get("/api/agents", (_req, res) => {
+  const rows = db.prepare(
+    `SELECT n.label, n.owner, r.key, r.value, r.updated_at
+     FROM names n JOIN agent_records r ON r.token_id = n.token_id
+     ORDER BY n.label`
+  ).all() as any[];
+  const byLabel: Record<string, any> = {};
+  for (const r of rows) {
+    byLabel[r.label] ??= { name: `${r.label}.agent`, label: r.label, owner: r.owner, records: {}, updatedAt: 0 };
+    byLabel[r.label].records[r.key] = r.value;
+    byLabel[r.label].updatedAt = Math.max(byLabel[r.label].updatedAt, r.updated_at);
+  }
+  const agents = Object.values(byLabel).filter((a: any) => a.records.url);
+  res.json({ agents });
+});
+
+/** Single agent card by label ("data" or "data.agent" both accepted). */
+app.get("/api/agents/:label", (req, res) => {
+  let label = String(req.params.label).toLowerCase();
+  if (label.endsWith(".agent")) label = label.slice(0, -6);
+  const name = db.prepare("SELECT label, owner, token_id FROM names WHERE label=?").get(label) as any;
+  if (!name) return res.status(404).json({ error: "name not registered" });
+  const rows = db.prepare("SELECT key, value, updated_at FROM agent_records WHERE token_id=?").all(name.token_id) as any[];
+  const records: Record<string, string> = {};
+  for (const r of rows) records[r.key] = r.value;
+  res.json({ name: `${label}.agent`, label, owner: name.owner, records });
+});
+
+/** Fast-path: apply a records tx immediately after the client lands it. */
+app.post("/api/agents/ingest", async (req, res) => {
+  const { txHash } = req.body ?? {};
+  if (typeof txHash !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
+    return res.status(400).json({ error: "invalid txHash" });
+  }
+  try {
+    const receipt = await publicClient.getTransactionReceipt({ hash: txHash as `0x${string}` });
+    const relevant = receipt.logs.filter(
+      (l) => l.address.toLowerCase() === RECORDS_ADDRESS.toLowerCase()
+    );
+    const events = parseEventLogs({ abi: RECORDS_ABI, logs: relevant }) as any[];
+    const ts = Math.floor(Date.now() / 1000);
+    for (const ev of events) applyRecordEvent(ev, ts);
+    res.json({ ok: true, ingested: events.length });
+  } catch {
+    res.status(502).json({ error: "could not read transaction yet — the indexer will catch it" });
+  }
+});
+
 app.post("/api/names/ingest", async (req, res) => {
   const { txHash } = req.body ?? {};
   if (typeof txHash !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
