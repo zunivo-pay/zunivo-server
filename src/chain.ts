@@ -45,3 +45,13 @@ export const SPLIT_ADDRESS = (process.env.SPLIT_ADDRESS ??
 export const SPLIT_ABI = parseAbi([
   "event SplitPaid(uint256 indexed splitId, bytes32 indexed orderId, address indexed payer, uint256 grossAmount, uint256 feeAmount)",
 ]);
+
+// --- Agent service-discovery records (ZunivoAgentRecords) ---
+export const RECORDS_ADDRESS = (process.env.RECORDS_ADDRESS ??
+  "0x0000000000000000000000000000000000000000") as `0x${string}`;
+
+export const RECORDS_ABI = parseAbi([
+  "event TextChanged(uint256 indexed tokenId, string indexed indexedKey, string key, string value)",
+  "event RecordsCleared(uint256 indexed tokenId, uint64 newVersion)",
+  "function texts(string label, string[] keys) view returns (string[] values)",
+]);
