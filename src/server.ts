@@ -7,7 +7,7 @@ import db, { hashOrderId } from "./db.js";
 import { publicClient, NAMES_ADDRESS, NAMES_ABI, RECORDS_ADDRESS, RECORDS_ABI } from "./chain.js";
 import { startIndexer, applyRecordEvent } from "./indexer.js";
 import { startKeeper } from "./keeper.js";
-import { mountX402Demo } from "./x402demo.js";
+import { mountX402Services } from "./x402services.js";
 
 const app = express();
 app.use(cors({ origin: process.env.APP_ORIGIN ?? true }));
@@ -292,8 +292,8 @@ app.get("/v1/orders/:id", requireKey, (req, res) => {
   res.json(orderView(o));
 });
 
-// Circle Agent Marketplace flagship: paid crypto-data endpoint over x402.
-mountX402Demo(app);
+// Circle Agent Marketplace: paid x402 services (agent-check KYA, arc-pulse, crypto10).
+mountX402Services(app);
 
 const PORT = Number(process.env.PORT ?? 8787);
 app.listen(PORT, () => console.log(`[zunivo-server] http://localhost:${PORT}`));
