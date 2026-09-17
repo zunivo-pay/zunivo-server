@@ -25,8 +25,14 @@ import { randomUUID } from "node:crypto";
 import { paymentRequired } from "zunivo-x402-arc";
 import db, { hashOrderId } from "./db.js";
 import { formatEther } from "viem";
+import { NET, NETWORK, IS_MAINNET } from "./chain.js";
+
+// x402 network id for every paid endpoint on this instance ("arc" on mainnet).
+const X402_NETWORK = NET.x402Network;
+const NETWORK_LABEL = `${X402_NETWORK} (${NET.caip2})`;
 
 const PAYTO = process.env.X402_DEMO_PAYTO ?? "";
+const API_BASE = process.env.API_BASE ?? (process.env.NETWORK === "mainnet" ? "https://api.zunivo.io" : "https://testnet-api.zunivo.io");
 const ORIGIN = process.env.APP_ORIGIN ?? "https://app.zunivo.io";
 const PRICE_CRYPTO10 = process.env.X402_DEMO_PRICE ?? "0.05";
 const PRICE_AGENT_CHECK = "0.05";
@@ -163,7 +169,7 @@ function agentCheck(label: string) {
     accountAgeDays: ageDays,
     riskFlags: flags,
     asOf: new Date().toISOString(),
-    basis: "Zunivo index of order-bound settlements via the verified ArcPayRouter, .agent registry, and on-chain agent cards (Arc testnet).",
+    basis: `Zunivo index of order-bound settlements via the verified ArcPayRouter, .agent registry, and on-chain agent cards (${NET.chainName}).`,
   };
 }
 
@@ -197,7 +203,7 @@ function arcPulse() {
       };
     });
   return {
-    network: "arc-testnet (eip155:5042002)",
+    network: NETWORK_LABEL,
     settlement: {
       last24h: { payments: d.n, volumeUsdc: fmt(d.vol), uniquePayers: d.payers },
       last7d: { payments: w.n, volumeUsdc: fmt(w.vol), uniquePayers: w.payers },
@@ -254,11 +260,11 @@ const OPENAPI = {
       "Paid x402 services on Arc, backed by Zunivo's exclusive index of the Arc payment " +
       "economy: every order-bound settlement through the verified ArcPayRouter, every .agent " +
       "name, and every published agent card. Unpaid requests receive HTTP 402 with " +
-      "PaymentRequirements (accepts[] carries both 'arc-testnet' and CAIP-2 'eip155:5042002'); " +
+      `PaymentRequirements (accepts[] carries both '${X402_NETWORK}' and CAIP-2 '${NET.caip2}'); ` +
       "pay the quoted USDC on Arc and retry with the X-PAYMENT header.",
     contact: { name: "Zunivo", url: "https://zunivo.io" },
   },
-  servers: [{ url: "https://api.zunivo.io" }],
+  servers: [{ url: IS_MAINNET ? "https://api.zunivo.io" : "https://testnet-api.zunivo.io" }],
   paths: {
     "/x402/agent-check/{name}": {
       get: {
@@ -330,7 +336,7 @@ export function mountX402Services(app: Express) {
   const payCheck = paymentRequired({
     price: PRICE_AGENT_CHECK, payTo: PAYTO,
     description: "Zunivo Agent Check — KYA diligence for a .agent identity",
-    verify: localSettle("[x402:agent-check]"), consumedStore,
+    verify: localSettle("[x402:agent-check]"), consumedStore, network: X402_NETWORK,
   });
   const normalizeName = (req: any, res: any, next: any) => {
     let label = String(req.params.name ?? "").toLowerCase();
@@ -351,8 +357,8 @@ export function mountX402Services(app: Express) {
   const payPulse = paymentRequired({
     price: PRICE_PULSE, payTo: PAYTO,
     description: "Zunivo Arc Pulse — Arc payment-economy snapshot",
-    resource: "https://api.zunivo.io/x402/arc-pulse",
-    verify: localSettle("[x402:arc-pulse]"), consumedStore,
+    resource: `${API_BASE}/x402/arc-pulse`,
+    verify: localSettle("[x402:arc-pulse]"), consumedStore, network: X402_NETWORK,
   });
   app.get("/x402/arc-pulse", quoteLimiter(), payPulse, (_req: any, res: any) => res.json(arcPulse()));
 
@@ -360,8 +366,8 @@ export function mountX402Services(app: Express) {
   const payCrypto = paymentRequired({
     price: PRICE_CRYPTO10, payTo: PAYTO,
     description: "Zunivo Crypto-10 — top-10 crypto market snapshot",
-    resource: "https://api.zunivo.io/x402/crypto10",
-    verify: localSettle("[x402:crypto10]"), consumedStore,
+    resource: `${API_BASE}/x402/crypto10`,
+    verify: localSettle("[x402:crypto10]"), consumedStore, network: X402_NETWORK,
   });
   const ensureData = async (req: any, res: any, next: any) => {
     try { req.crypto10 = await crypto10(); next(); }

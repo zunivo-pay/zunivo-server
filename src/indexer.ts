@@ -1,9 +1,7 @@
 import { parseEther } from "viem";
 import db from "./db.js";
 import { parseEventLogs } from "viem";
-import { publicClient, ROUTER_ADDRESS, PAYMENT_EVENT, SPLIT_ADDRESS, SPLIT_ABI, RECORDS_ADDRESS, RECORDS_ABI } from "./chain.js";
-
-const START_BLOCK = BigInt(process.env.START_BLOCK ?? "52904490");
+import { publicClient, ROUTER_ADDRESS, PAYMENT_EVENT, SPLIT_ADDRESS, SPLIT_ABI, RECORDS_ADDRESS, RECORDS_ABI, START_BLOCK, NETWORK } from "./chain.js";
 const POLL_MS = 20_000;
 const LIMIT_COOLDOWN_MS = 60_000;
 const CHUNK = 9000n;
@@ -20,7 +18,7 @@ const upsertRecord = db.prepare(
    ON CONFLICT(token_id,key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`
 );
 const deleteRecord = db.prepare("DELETE FROM agent_records WHERE token_id=? AND key=?");
-const deleteAllRecords = db.prepare("DELETE FROM agent_records WHERE token_id=?");
+export const deleteAllRecords = db.prepare("DELETE FROM agent_records WHERE token_id=?");
 
 /** Apply one parsed ZunivoAgentRecords event to the local mirror. Exported so the
  *  /api/agents/ingest fast-path applies receipts through the exact same logic. */
@@ -143,5 +141,5 @@ export function startIndexer() {
     }
   };
   loop();
-  console.log(`[indexer] watching ${ROUTER_ADDRESS} from block ${getCursor() + 1n}`);
+  console.log(`[indexer:${NETWORK}] watching ${ROUTER_ADDRESS} from block ${getCursor() + 1n}`);
 }
