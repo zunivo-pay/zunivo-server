@@ -2,10 +2,11 @@ import { createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import db from "./db.js";
 import { parseEventLogs } from "viem";
-import { publicClient, arcTestnet, SCHED_ADDRESS, SCHED_ABI, NAMES_ADDRESS, NAMES_ABI } from "./chain.js";
+import { publicClient, arcChain, SCHED_ADDRESS, SCHED_ABI, NAMES_ADDRESS, NAMES_ABI, SCHED_START_BLOCK, NAMES_START_BLOCK, NET, NETWORK } from "./chain.js";
+import { deleteAllRecords } from "./indexer.js";
 
-const START = BigInt(process.env.SCHED_START_BLOCK ?? "53036093");
-const NAMES_START = BigInt(process.env.NAMES_START_BLOCK ?? "52965184");
+const START = SCHED_START_BLOCK;
+const NAMES_START = NAMES_START_BLOCK;
 const POLL_MS = 30_000;
 const LIMIT_COOLDOWN_MS = 60_000;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -71,7 +72,12 @@ async function scanNames() {
         db.prepare("INSERT OR REPLACE INTO names(token_id,label,owner) VALUES(?,?,?)")
           .run(a.tokenId.toString(), a.name, a.holder);
       } else if (log.eventName === "Transfer" && a.from !== "0x0000000000000000000000000000000000000000") {
-        db.prepare("UPDATE names SET owner=? WHERE token_id=?").run(a.to, a.tokenId.toString());
+        const id = a.tokenId.toString();
+        db.prepare("UPDATE names SET owner=? WHERE token_id=?").run(a.to, id);
+        // v1.3 (M-2): a real transfer bumps nameEpoch on-chain, which makes every record
+        // of the old holder unreadable. Mirror that so the directory never shows a
+        // previous owner's endpoint under a name that changed hands.
+        if (NET.recordsInvalidateOnTransfer) deleteAllRecords.run(id);
       }
     }
     setNCur(to);
@@ -92,7 +98,7 @@ async function autoRelease() {
   ).all(Math.floor(Date.now() / 1000)) as { id: number }[];
   if (due.length === 0) return;
   const account = privateKeyToAccount(pk as `0x${string}`);
-  const wallet = createWalletClient({ account, chain: arcTestnet, transport: http() });
+  const wallet = createWalletClient({ account, chain: arcChain, transport: http() });
   for (const { id } of due) {
     try {
       const hash = await wallet.writeContract({
@@ -127,5 +133,5 @@ export function startKeeper() {
     } finally { setTimeout(loop, delay); }
   };
   loop();
-  console.log(`[keeper] watching ${SCHED_ADDRESS} from block ${getCur() + 1n}${process.env.KEEPER_PK ? " (auto-release ON)" : " (auto-release off — set KEEPER_PK to enable)"}`);
+  console.log(`[keeper:${NETWORK}] watching ${SCHED_ADDRESS} from block ${getCur() + 1n}${process.env.KEEPER_PK ? " (auto-release ON)" : " (auto-release off — set KEEPER_PK to enable)"}`);
 }

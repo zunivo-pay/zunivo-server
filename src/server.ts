@@ -4,7 +4,7 @@ import cors from "cors";
 import { randomUUID, randomBytes, createHash } from "node:crypto";
 import { isAddress, formatEther, parseEventLogs } from "viem";
 import db, { hashOrderId } from "./db.js";
-import { publicClient, NAMES_ADDRESS, NAMES_ABI, RECORDS_ADDRESS, RECORDS_ABI } from "./chain.js";
+import { publicClient, NAMES_ADDRESS, NAMES_ABI, RECORDS_ADDRESS, RECORDS_ABI, NETWORK, NETWORK_INFO, IS_MAINNET } from "./chain.js";
 import { startIndexer, applyRecordEvent } from "./indexer.js";
 import { startKeeper } from "./keeper.js";
 import { mountX402Services } from "./x402services.js";
@@ -228,7 +228,9 @@ app.get("/api/scheduled/:address", (req, res) => {
   res.json({ incoming, outgoing });
 });
 
-app.get("/api/health", (_req, res) => res.json({ ok: true }));
+app.get("/api/health", (_req, res) => res.json({ ok: true, network: NETWORK, chainId: NETWORK_INFO.chainId }));
+/** Public description of which Arc network + contracts this instance serves. */
+app.get("/api/network", (_req, res) => res.json(NETWORK_INFO));
 
 // ---------------------------------------------------------------
 // Zunivo API v1 — the machine door: programmatic orders with API keys
@@ -236,10 +238,11 @@ app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 
-/** Self-serve key issuance (testnet). The key is shown exactly once. */
+/** Self-serve key issuance. Keys are network-scoped by prefix (zk_live_ / zk_test_) and
+ *  live in this instance's own DB, so a testnet key can never create a mainnet order. */
 app.post("/api/keys", (req, res) => {
   const label = String(req.body?.label ?? "unnamed").slice(0, 64);
-  const key = "zk_test_" + randomBytes(24).toString("hex");
+  const key = (IS_MAINNET ? "zk_live_" : "zk_test_") + randomBytes(24).toString("hex");
   db.prepare("INSERT INTO api_keys(key_hash,label,created_at) VALUES(?,?,?)")
     .run(sha(key), label, Math.floor(Date.now() / 1000));
   res.json({ key, label, note: "Store this now — it is shown only once." });
@@ -296,6 +299,6 @@ app.get("/v1/orders/:id", requireKey, (req, res) => {
 mountX402Services(app);
 
 const PORT = Number(process.env.PORT ?? 8787);
-app.listen(PORT, () => console.log(`[zunivo-server] http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`[zunivo-server] ${NETWORK} (chainId ${NETWORK_INFO.chainId}) http://localhost:${PORT}`));
 startIndexer();
 startKeeper();

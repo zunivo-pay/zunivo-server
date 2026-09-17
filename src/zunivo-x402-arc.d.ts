@@ -24,6 +24,6 @@ declare module "zunivo-x402-arc" {
     verify?: X402SettleAdapter;
     resource?: string;
     consumedStore?: X402ConsumedStore;
-    network?: "arc" | "arc-testnet" | "eip155:5042002";
+    network?: "arc" | "arc-testnet" | "eip155:5042" | "eip155:5042002";
   }): RequestHandler;
 }

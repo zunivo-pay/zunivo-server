@@ -1,7 +1,11 @@
 import Database from "better-sqlite3";
 import { keccak256, toHex } from "viem";
 
-const db = new Database(process.env.DB_PATH ?? "zunivo.db");
+// One database per network — a mainnet instance must never read testnet cursors/orders.
+// Default: zunivo.db (testnet, historical name) / zunivo-mainnet.db. DB_PATH overrides.
+const NETWORK_FOR_DB = (process.env.NETWORK ?? "testnet").toLowerCase();
+const DEFAULT_DB = NETWORK_FOR_DB === "mainnet" ? "zunivo-mainnet.db" : "zunivo.db";
+const db = new Database(process.env.DB_PATH ?? DEFAULT_DB);
 db.pragma("journal_mode = WAL");
 db.exec(`
 CREATE TABLE IF NOT EXISTS orders(
