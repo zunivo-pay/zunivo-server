@@ -12,7 +12,7 @@ const LIMIT_COOLDOWN_MS = 60_000;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 let errStreak = 0;
 const CHUNK = 2000n;
-const NCHUNK = 10_000n; // names contract is event-sparse — big strides
+const NCHUNK = 10_000n; // names contract has few events, scan in big strides
 
 const getCur = (): bigint => {
   const r = db.prepare("SELECT v FROM cursor WHERE k='sched_block'").get() as { v: string } | undefined;
@@ -74,9 +74,8 @@ async function scanNames() {
       } else if (log.eventName === "Transfer" && a.from !== "0x0000000000000000000000000000000000000000") {
         const id = a.tokenId.toString();
         db.prepare("UPDATE names SET owner=? WHERE token_id=?").run(a.to, id);
-        // v1.3 (M-2): a real transfer bumps nameEpoch on-chain, which makes every record
-        // of the old holder unreadable. Mirror that so the directory never shows a
-        // previous owner's endpoint under a name that changed hands.
+        // In v1.3 a transfer bumps nameEpoch on-chain and the old holder's records stop
+        // resolving. Mirror that so the directory doesn't show a previous owner's endpoint.
         if (NET.recordsInvalidateOnTransfer) deleteAllRecords.run(id);
       }
     }

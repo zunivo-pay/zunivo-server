@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import { keccak256, toHex } from "viem";
 
-// One database per network — a mainnet instance must never read testnet cursors/orders.
+// One database per network so a mainnet instance can't read testnet cursors or orders.
 // Default: zunivo.db (testnet, historical name) / zunivo-mainnet.db. DB_PATH overrides.
 const NETWORK_FOR_DB = (process.env.NETWORK ?? "testnet").toLowerCase();
 const DEFAULT_DB = NETWORK_FOR_DB === "mainnet" ? "zunivo-mainnet.db" : "zunivo.db";
@@ -69,7 +69,7 @@ CREATE INDEX IF NOT EXISTS idx_sched_recipient ON scheduled(recipient);
 CREATE INDEX IF NOT EXISTS idx_sched_sender ON scheduled(sender);
 `);
 try { db.exec("ALTER TABLE orders ADD COLUMN split_id TEXT"); } catch {}
-// M-3 fix: payments must be keyed by (tx_hash, log_index) — one tx can carry many payments
+// payments are keyed by (tx_hash, log_index) since one tx can carry several
 try {
   const cols = db.prepare("PRAGMA table_info(payments)").all() as any[];
   if (!cols.some((c) => c.name === "log_index")) {

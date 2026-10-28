@@ -1,24 +1,18 @@
 /**
- * x402services.ts — Zunivo's paid x402 services on Arc (Circle Agent Marketplace).
+ * Paid x402 endpoints (listed on the Circle Agent Marketplace).
  *
- *   GET /x402/agent-check/:name  0.05 USDC  KYA — counterparty diligence for agents
- *   GET /x402/arc-pulse          0.10 USDC  Arc payment-economy snapshot (exclusive index)
- *   GET /x402/crypto10           0.05 USDC  top-10 crypto market snapshot (starter demo)
- *   GET /x402/openapi.json       free       OpenAPI 3.1 spec for all endpoints
+ *   GET /x402/agent-check/:name  0.05 USDC  background check on a .agent name
+ *   GET /x402/arc-pulse          0.10 USDC  snapshot of payment activity from our index
+ *   GET /x402/crypto10           0.05 USDC  top-10 crypto prices (demo)
+ *   GET /x402/openapi.json       free       OpenAPI 3.1 spec
  *
- * The first two are backed by data ONLY Zunivo has: our index of every payment
- * through the verified ArcPayRouter, every .agent name, and every published
- * agent card.
+ * Notes:
+ *   replay store is sqlite (INSERT OR IGNORE, so reserve() is atomic)
+ *   each endpoint tags the orders it creates, so an order paid for one can't unlock another
+ *   unpaid 402s are rate limited per IP
+ *   the data is checked before the payment path runs, so nobody pays for a 404 or a 503
  *
- * Hardening (carried from the audited v3 + kept per-endpoint):
- *   A-1 durable replay store (sqlite, atomic INSERT OR IGNORE)
- *   A-2 order provenance     (per-endpoint memo tag — no cross-endpoint reuse,
- *                             no third-party paid order can unlock anything)
- *   A-3 quote rate limit     (per-IP on unpaid 402s; best-effort abuse control)
- *   A-4 no pay-for-nothing   (goods checked BEFORE payment: unknown .agent → 404
- *                             pre-payment; crypto10 upstream down → 503 pre-payment)
- *
- * Env: X402_DEMO_PAYTO (required, dedicated 0x wallet) · X402_DEMO_PRICE (crypto10, default 0.05)
+ * Env: X402_DEMO_PAYTO (payout wallet), X402_DEMO_PRICE (crypto10, default 0.05)
  */
 import type { Express } from "express";
 import { randomUUID } from "node:crypto";
@@ -44,7 +38,7 @@ function toBase(h: string): bigint {
   return BigInt((w || "0") + (f + "000000").slice(0, 6));
 }
 
-/** A-1: durable, atomic replay store (middleware's reserve() contract). */
+/** sqlite-backed replay store for the middleware. */
 function sqliteConsumedStore() {
   db.exec("CREATE TABLE IF NOT EXISTS x402_consumed(key TEXT PRIMARY KEY, at INTEGER)");
   const ins = db.prepare("INSERT OR IGNORE INTO x402_consumed(key,at) VALUES(?,?)");
@@ -57,7 +51,7 @@ function sqliteConsumedStore() {
 }
 const consumedStore = sqliteConsumedStore(); // one shared table; keys are resource-scoped
 
-/** A-2: local settlement adapter with a per-endpoint provenance tag. */
+/** Settlement adapter. Orders are tagged per endpoint so they can't be reused across endpoints. */
 function localSettle(tag: string) {
   return {
     async quote(price: string, payTo: string, memo: string) {
@@ -95,7 +89,7 @@ function localSettle(tag: string) {
   };
 }
 
-/** A-3: per-IP limiter for the order-minting (unpaid-402) path only. */
+/** Per-IP limiter for unpaid 402s (each one creates an order row). */
 function quoteLimiter(maxPerMin = 20) {
   const hits = new Map<string, number[]>();
   setInterval(() => {
@@ -120,7 +114,7 @@ function quoteLimiter(maxPerMin = 20) {
 }
 
 // ============================================================================
-// Service 1 — Agent check (KYA): counterparty diligence before an agent pays
+// agent-check
 // ============================================================================
 
 const fmt = (wei: string | bigint) => Number(formatEther(BigInt(wei))).toFixed(2);
@@ -174,7 +168,7 @@ function agentCheck(label: string) {
 }
 
 // ============================================================================
-// Service 2 — Arc pulse: the payment-economy snapshot only our index can build
+// arc-pulse
 // ============================================================================
 
 function arcPulse() {
@@ -218,7 +212,7 @@ function arcPulse() {
 }
 
 // ============================================================================
-// Service 3 — crypto10 (starter demo): top-10 market snapshot, 60s cache
+// crypto10, 60s cache
 // ============================================================================
 
 let cache: { at: number; coins: any[] } | null = null;
@@ -248,7 +242,7 @@ async function crypto10(): Promise<{ asOf: string; source: string; coins: any[] 
 }
 
 // ============================================================================
-// OpenAPI 3.1 — all endpoints (a marketplace listing requirement)
+// OpenAPI 3.1, required for the marketplace listing
 // ============================================================================
 
 const OPENAPI = {
@@ -344,7 +338,7 @@ export function mountX402Services(app: Express) {
     if (!/^[a-z0-9][a-z0-9-]{1,18}[a-z0-9]$/.test(label)) {
       return res.status(400).json({ error: "invalid .agent name format — no payment taken" });
     }
-    // A-4: verify the goods exist BEFORE any payment logic runs.
+    // check the name exists before the payment path runs
     const report = agentCheck(label);
     if (!report) return res.status(404).json({ error: `${label}.agent is not registered — no payment taken` });
     req.agentReport = report;

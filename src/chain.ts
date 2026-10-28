@@ -1,7 +1,7 @@
 import { createPublicClient, defineChain, http, parseAbi, parseAbiItem } from "viem";
 
 /**
- * Network selection — ONE switch for the whole server.
+ * Network selection. One switch for the whole server.
  *
  *   NETWORK=mainnet   Arc mainnet, v1.3 contracts, real USDC   (api.zunivo.io)
  *   NETWORK=testnet   Arc testnet, sandbox contracts            (testnet-api.zunivo.io)
@@ -93,7 +93,7 @@ export const arcChain = defineChain({
   blockExplorers: { default: { name: "ArcScan", url: NET.explorer } },
   testnet: !IS_MAINNET,
 });
-/** @deprecated use arcChain — kept so old imports keep compiling. */
+/** @deprecated use arcChain. Kept so old imports compile. */
 export const arcTestnet = arcChain;
 
 const RPC_URL = process.env.RPC_URL ?? NET.rpc;

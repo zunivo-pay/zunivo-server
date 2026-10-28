@@ -1,22 +1,12 @@
-# zunivo-server — indexer + API
+# zunivo-server
 
-Watches the zunivo contracts on Arc (payments, `.agent` name mints, agent-card
-records), stores everything in SQLite, and serves the orders / dashboard /
-directory API behind `api.zunivo.io`.
+Indexer and API behind api.zunivo.io. Watches the contracts on Arc, keeps what it sees in SQLite, serves the app and the paid x402 endpoints.
 
-## What it indexes
+What it indexes: `PaymentReceived` from ArcPayRouter (an order flips to paid when payments to the right merchant for that orderId add up to the amount), name mints and transfers from ZunivoNames, and `TextChanged` / `RecordsCleared` from ZunivoAgentRecords for the agent directory.
 
-- `ArcPayRouter` — `PaymentReceived` events → orders flip to **paid** only when
-  payments matching BOTH the orderId hash AND the merchant sum to ≥ the amount due.
-- `ZunivoNames` — mints/transfers → name ↔ address resolution.
-- `ZunivoAgentRecords` — `TextChanged`/`RecordsCleared` → the public agent
-  directory (names that published a service endpoint).
+## Networks
 
-## Networks — one switch
-
-`NETWORK=mainnet` or `NETWORK=testnet` in `.env` selects the chain, the contract
-set, start blocks, explorer, x402 network id and the SQLite file. Nothing else
-needs to change between environments.
+`NETWORK=mainnet` or `NETWORK=testnet` in `.env` picks the chain, contracts, start blocks, explorer, x402 network id and the SQLite file.
 
 | | mainnet | testnet |
 |---|---|---|

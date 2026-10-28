@@ -101,10 +101,10 @@ app.get("/api/names/:address", (req, res) => {
 });
 
 /** Fast-path: right after minting, the client hands us the tx hash and we
- *  ingest its NameRegistered/Transfer events immediately — no waiting for
+ *  ingest its NameRegistered/Transfer events immediately, no waiting for
  *  the polling indexer. Idempotent; the poller remains the source of truth. */
 // ---------------------------------------------------------------
-// Agent directory — the service-discovery layer over .agent names
+// agent directory
 // ---------------------------------------------------------------
 
 /** Every .agent name that has published records; only names with a service
@@ -233,7 +233,7 @@ app.get("/api/health", (_req, res) => res.json({ ok: true, network: NETWORK, cha
 app.get("/api/network", (_req, res) => res.json(NETWORK_INFO));
 
 // ---------------------------------------------------------------
-// Zunivo API v1 — the machine door: programmatic orders with API keys
+// API v1: orders with API keys
 // ---------------------------------------------------------------
 
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
